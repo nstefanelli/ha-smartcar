@@ -85,6 +85,20 @@
     ),
   ])
 # ---
+# name: test_switch[unknown_make-turn_off-503-unavailable-off-ClientResponseError-1]
+  list([
+    tuple(
+      'post',
+      URL('http://test.local/v2.0/vehicles/a1d50709-3502-4faa-ba43-a5c7565e6a09/charge'),
+      dict({
+        'action': 'STOP',
+      }),
+      dict({
+        'authorization': 'Bearer mock-token',
+      }),
+    ),
+  ])
+# ---
 # name: test_switch[unknown_make-turn_on-200-success-on-NoneType-1]
   list([
     tuple(

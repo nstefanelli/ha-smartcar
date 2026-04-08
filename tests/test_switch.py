@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
+from aiohttp import ClientResponseError
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -43,6 +44,7 @@ NO_ERROR = None.__class__
         (SERVICE_TURN_ON, 401, "unauthroized", STATE_OFF, NO_ERROR, 1),
         (SERVICE_TURN_OFF, 401, "unauthroized", STATE_OFF, NO_ERROR, 1),
         (SERVICE_TURN_OFF, 500, "server", STATE_OFF, NO_ERROR, 4),
+        (SERVICE_TURN_OFF, 503, "unavailable", STATE_OFF, ClientResponseError, 1),
     ],
 )
 @pytest.mark.parametrize("vehicle_fixture", ["unknown_make"])

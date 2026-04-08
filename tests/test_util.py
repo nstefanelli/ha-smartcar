@@ -257,9 +257,7 @@ async def test_retry_success_first_attempt():
     ok = _mock_response(200)
     request_fn = AsyncMock(return_value=ok)
 
-    result = await async_request_with_retry(
-        request_fn, logger=_logger, context="test"
-    )
+    result = await async_request_with_retry(request_fn, logger=_logger, context="test")
 
     assert result is ok
     assert request_fn.call_count == 1
@@ -284,9 +282,7 @@ async def test_retry_429_with_retry_after_then_success():
     ok = _mock_response(200)
     request_fn = AsyncMock(side_effect=[rate_limited, ok])
 
-    result = await async_request_with_retry(
-        request_fn, logger=_logger, context="test"
-    )
+    result = await async_request_with_retry(request_fn, logger=_logger, context="test")
 
     assert result is ok
     assert request_fn.call_count == 2
@@ -297,9 +293,7 @@ async def test_retry_429_without_retry_after_does_not_retry():
     rate_limited = _mock_response(429)
     request_fn = AsyncMock(return_value=rate_limited)
 
-    result = await async_request_with_retry(
-        request_fn, logger=_logger, context="test"
-    )
+    result = await async_request_with_retry(request_fn, logger=_logger, context="test")
 
     assert result is rate_limited
     assert request_fn.call_count == 1
@@ -309,9 +303,7 @@ async def test_retry_429_with_invalid_retry_after_does_not_retry():
     rate_limited = _mock_response(429, headers={"Retry-After": "not-a-number"})
     request_fn = AsyncMock(return_value=rate_limited)
 
-    result = await async_request_with_retry(
-        request_fn, logger=_logger, context="test"
-    )
+    result = await async_request_with_retry(request_fn, logger=_logger, context="test")
 
     assert result is rate_limited
     assert request_fn.call_count == 1
@@ -353,9 +345,7 @@ async def test_retry_non_retryable_status_returns_immediately():
     forbidden = _mock_response(403)
     request_fn = AsyncMock(return_value=forbidden)
 
-    result = await async_request_with_retry(
-        request_fn, logger=_logger, context="test"
-    )
+    result = await async_request_with_retry(request_fn, logger=_logger, context="test")
 
     assert result is forbidden
     assert request_fn.call_count == 1
