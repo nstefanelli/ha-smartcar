@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import logging
+import time
 from typing import Any, cast
 
 from aiohttp import ClientConnectorError, ClientError
@@ -44,6 +45,29 @@ from .webhooks import webhook_url_from_id
 _LOGGER = logging.getLogger(__name__)
 
 CONF_USE_WEBHOOKS = "use_webhooks"
+
+# Manual-token reauth fields (for environments where the OAuth web flow is unavailable,
+# e.g. an OEM blocking Smartcar's web client via captcha — BMW US since 2025-09. The user
+# obtains tokens out-of-band via Smartcar's mobile SDK and pastes them here.)
+CONF_MANUAL_ACCESS_TOKEN = "access_token"  # noqa: S105
+CONF_MANUAL_REFRESH_TOKEN = "refresh_token"  # noqa: S105
+CONF_MANUAL_EXPIRES_IN = "expires_in"
+
+DEFAULT_TOKEN_EXPIRES_IN = 7200  # Smartcar access tokens are 2h by spec
+
+MANUAL_TOKEN_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_MANUAL_ACCESS_TOKEN): TextSelector(
+            config=TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+        vol.Required(CONF_MANUAL_REFRESH_TOKEN): TextSelector(
+            config=TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+        vol.Optional(
+            CONF_MANUAL_EXPIRES_IN, default=DEFAULT_TOKEN_EXPIRES_IN
+        ): vol.All(int, vol.Range(min=60, max=86400)),
+    }
+)
 
 GENERAL_CONFIGURATION_SCHEMA = {
     vol.Required(CONF_USE_WEBHOOKS, default=True): bool,
@@ -240,12 +264,82 @@ class SmartcarOAuth2FlowHandler(AbstractOAuth2FlowHandler, domain=DOMAIN):  # ty
     ) -> ConfigFlowResult:
         """Dialog that informs the user that reauth is required.
 
+        Offers two paths: the standard OAuth web flow, or a manual token entry path
+        for environments where the OAuth flow is unavailable (e.g. an OEM blocking
+        Smartcar's web client via captcha; user mints tokens via mobile SDK instead).
+
         Returns:
             The config flow result.
         """
         if user_input is None:
-            return self.async_show_form(step_id="reauth_confirm")
+            return self.async_show_menu(
+                step_id="reauth_confirm",
+                menu_options=["oauth_reauth", "manual_token"],
+            )
         return await self.async_step_user()
+
+    async def async_step_oauth_reauth(
+        self, user_input: dict[str, Any] | None = None  # noqa: ARG002
+    ) -> ConfigFlowResult:
+        """Branch from the reauth menu into the standard OAuth flow."""
+        return await self.async_step_user()
+
+    async def async_step_manual_token(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Accept tokens minted out-of-band (Smartcar mobile SDK).
+
+        Reuses ``async_oauth_create_entry`` by constructing a synthetic OAuth
+        result dict matching the shape that the web flow would produce. Token
+        refresh continues to work transparently because Smartcar's
+        ``/oauth/token`` refresh endpoint does not require ``redirect_uri`` —
+        only the client_id/secret (Basic Auth) and refresh_token in the body.
+
+        Returns:
+            The config flow result.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            expires_in = int(user_input.get(CONF_MANUAL_EXPIRES_IN, DEFAULT_TOKEN_EXPIRES_IN))
+            synthetic_token = {
+                "access_token": user_input[CONF_MANUAL_ACCESS_TOKEN],
+                "refresh_token": user_input[CONF_MANUAL_REFRESH_TOKEN],
+                "expires_in": expires_in,
+                "expires_at": time.time() + expires_in,
+                "token_type": "Bearer",
+            }
+            synthetic_data = {CONF_TOKEN: synthetic_token}
+
+            # Establish requested_scopes for populate_entry_data.
+            # Reauth: preserve the existing entry's scope selection.
+            # Setup:  default to REQUIRED + DEFAULT scopes.
+            existing_scopes = self._initial_data().get(CONF_TOKEN, {}).get("scopes")
+            if existing_scopes:
+                self.scope_data = {
+                    str(scope): str(scope) in existing_scopes
+                    for scope in CONFIGURABLE_SCOPES
+                }
+            else:
+                self.scope_data = {
+                    str(scope): scope in DEFAULT_SCOPES
+                    for scope in CONFIGURABLE_SCOPES
+                }
+
+            # entry_data is required by async_oauth_create_entry. For reauth it's
+            # already set in async_step_reauth; for initial setup we initialize empty
+            # (no webhook_id — webhooks are configurable via the options flow later).
+            if self.entry_data is None:
+                self.entry_data = {}
+
+            return await self.async_oauth_create_entry(synthetic_data)
+
+        return self.async_show_form(
+            step_id="manual_token",
+            data_schema=MANUAL_TOKEN_SCHEMA,
+            errors=errors,
+            last_step=True,
+        )
 
     async def async_oauth_create_entry(self, data: dict) -> ConfigFlowResult:
         assert self.entry_data is not None

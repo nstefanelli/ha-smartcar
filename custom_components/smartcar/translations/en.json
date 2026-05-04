@@ -37,8 +37,24 @@
                 "title": "Pick authentication method"
             },
             "reauth_confirm": {
-                "description": "The Smartcar integration needs to re-authenticate your account",
-                "title": "Authentication expired for {name}"
+                "description": "The Smartcar integration needs to re-authenticate your account.\n\nChoose **OAuth re-authentication** for the standard browser-based flow.\n\nChoose **Manual token entry** if the OAuth flow is unavailable for your vehicle (for example, BMW vehicles in the US since 2025-09 require Smartcar's mobile SDK and cannot complete the web OAuth flow). You will need an `access_token` + `refresh_token` minted out-of-band via the mobile SDK.",
+                "title": "Authentication expired for {name}",
+                "menu_options": {
+                    "oauth_reauth": "OAuth re-authentication (default)",
+                    "manual_token": "Manual token entry"
+                }
+            },
+            "oauth_reauth": {
+                "title": "OAuth re-authentication"
+            },
+            "manual_token": {
+                "data": {
+                    "access_token": "Access token",
+                    "refresh_token": "Refresh token",
+                    "expires_in": "Access token TTL in seconds (default 7200)"
+                },
+                "description": "Paste tokens obtained out-of-band via Smartcar's mobile SDK. The integration will validate the access token by listing your vehicles, then store both tokens. The refresh token will be used automatically as the access token expires.\n\nRefresh tokens rotate on each use and are valid for 60 days from last use; as long as Home Assistant runs and refreshes regularly, the chain stays alive indefinitely.",
+                "title": "Manual token entry"
             },
             "webhooks": {
                 "data": {

@@ -1,4 +1,13 @@
-# Smartcar Integration for Home Assistant
+# Smartcar Integration for Home Assistant — stefhome fork
+
+> **About this fork:** Personal fork of [`wbyoung/smartcar`](https://github.com/wbyoung/smartcar) with additional features, primarily a **manual token entry path for re-authentication** to support vehicles where Smartcar's web OAuth flow is unavailable (e.g. BMW US since 2025-09, where new pairings must use Smartcar's mobile SDK).
+>
+> Generally-useful changes are submitted upstream as PRs. The fork tracks `upstream/main` and is merged periodically.
+>
+> **What's added vs. upstream:**
+> - **Manual token entry during reauth.** When HA prompts for re-authentication, choose "Manual token entry" instead of "OAuth re-authentication" and paste in tokens obtained via Smartcar's mobile SDK (auth code → exchange via `auth.smartcar.com/oauth/token`). HA's standard refresh chain takes over from there — no further mobile-SDK round-trips until the next revoke event.
+
+---
 
 [![HACS](https://img.shields.io/badge/default-grey?logo=homeassistantcommunitystore&logoColor=white)][hacs-repo]
 [![HACS installs](https://img.shields.io/github/downloads/wbyoung/smartcar/latest/total?label=installs&color=blue)][hacs-repo]

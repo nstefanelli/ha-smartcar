@@ -1,16 +1,16 @@
 {
   "domain": "smartcar",
-  "name": "Smartcar",
+  "name": "Smartcar (stefhome fork)",
   "after_dependencies": ["cloud"],
-  "codeowners": ["@tube0013", "@wbyoung"],
+  "codeowners": ["@nstefanelli", "@tube0013", "@wbyoung"],
   "config_flow": true,
   "dependencies": ["application_credentials", "webhook"],
-  "documentation": "https://github.com/wbyoung/smartcar",
+  "documentation": "https://github.com/nstefanelli/ha-smartcar",
   "homekit": {},
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/wbyoung/smartcar/issues",
+  "issue_tracker": "https://github.com/nstefanelli/ha-smartcar/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.1.0",
+  "version": "0.4.7-stefhome.1",
   "zeroconf": []
 }
