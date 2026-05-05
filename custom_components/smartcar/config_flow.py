@@ -122,7 +122,8 @@ def _validate_general_configuration_input(
     if not management_token:
         user_input.pop(CONF_APPLICATION_MANAGEMENT_TOKEN, None)
 
-    # Polling intervals — fast must be <= base.
+    # Polling intervals — fast must be <= base. Use a field-specific error key
+    # rather than "base" so a concurrent webhook-config error is preserved.
     base = int(
         user_input.get(CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES)
     )
@@ -132,7 +133,7 @@ def _validate_general_configuration_input(
         )
     )
     if fast > base:
-        errors["base"] = "fast_must_be_le_base"
+        errors[CONF_FAST_SCAN_INTERVAL_MINUTES] = "fast_must_be_le_base"
 
 
 def _add_dynamic_values_to_entry_data(

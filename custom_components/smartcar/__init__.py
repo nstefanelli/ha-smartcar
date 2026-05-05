@@ -239,8 +239,15 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             unique_id=util.unique_id_from_entry_data(new_data),
             data=new_data,
             version=2,
-            minor_version=0,
+            minor_version=1,
         )
+
+    # Minor-version bump 0 → 1: new polling-options keys are read with `.get()`
+    # defaults at runtime, so no data transformation is needed — but we MUST
+    # write the bumped minor_version, otherwise HA calls async_migrate_entry on
+    # every restart in a persistent loop.
+    if config_entry.version == 2 and config_entry.minor_version < 1:
+        hass.config_entries.async_update_entry(config_entry, minor_version=1)
 
     _LOGGER.debug(
         "Migration to configuration version %s.%s successful",

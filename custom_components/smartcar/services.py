@@ -166,7 +166,7 @@ async def _poll_now(
         len(targets),
         entry_id,
     )
-    await asyncio.gather(*(c.async_request_refresh() for c in targets))
+    await asyncio.gather(*(c.async_poll_now() for c in targets))
 
 
 @callback

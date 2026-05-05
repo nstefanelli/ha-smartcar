@@ -97,15 +97,18 @@
         },
         "error": {
             "no_management_token": "Missing application management token",
-            "extraneous_management_token": "Do not provide application management token unless using webhooks"
+            "extraneous_management_token": "Do not provide application management token unless using webhooks",
+            "fast_must_be_le_base": "The fast polling interval must be less than or equal to the base interval."
         },
         "step": {
             "webhooks": {
                 "data": {
                     "use_webhooks": "Use webhooks",
-                    "application_management_token": "Token: only provide if using webhooks"
+                    "application_management_token": "Token: only provide if using webhooks",
+                    "scan_interval_minutes": "Base polling interval (minutes, 60–1440)",
+                    "fast_scan_interval_minutes": "Fast polling while charging or active (minutes, 30–720, must be ≤ base)"
                 },
-                "description": "Provide your _Application Management Token_ from your [Smartcar account]({smartcar_url}) to use webhooks.\n\nTo send events to Home Assistant, you will need to set up a [webhook with Smartcar]({smartcar_url}). Use the following URL:\n\n`{webhook_url}`\n\nIf the above URL indicates that webhooks are not enabled, revisit this configuration screen after completing the setup to get the URL.\n\nSee [the documentation]({docs_url}) for further details.",
+                "description": "Provide your _Application Management Token_ from your [Smartcar account]({smartcar_url}) to use webhooks.\n\nTo send events to Home Assistant, you will need to set up a [webhook with Smartcar]({smartcar_url}). Use the following URL:\n\n`{webhook_url}`\n\nIf the above URL indicates that webhooks are not enabled, revisit this configuration screen after completing the setup to get the URL.\n\n**Polling:** the integration polls Smartcar at the base interval (default 6h). When a vehicle is charging or plugged in, it polls at the fast interval (default 1h). Free tier is 500 API calls/month/vehicle. The `smartcar.poll_now` service forces an immediate refresh from automations (debounced 60s).\n\nSee [the documentation]({docs_url}) for further details.",
                 "title": "Smartcar configuration"
             }
         }

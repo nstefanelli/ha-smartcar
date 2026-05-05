@@ -44,6 +44,24 @@ VEHICLE_LEFT_COLUMN = 0
 VEHICLE_RIGHT_COLUMN = 1
 
 
+def _coerce_minutes(value: Any, default: int) -> int:
+    """Coerce a stored interval value to int minutes, falling back on bad data.
+
+    Options-flow validation prevents non-int input via ``vol.Coerce(int)``, but
+    ``.storage/core.config_entries`` is hand-editable, so we defend against
+    malformed values (string, None, etc.) rather than crash coordinator init.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        _LOGGER.warning(
+            "smartcar: invalid interval value %r in config entry; using default %d",
+            value,
+            default,
+        )
+        return default
+
+
 def _entry_base_interval(entry: ConfigEntry) -> timedelta | None:
     """Resolve the configured base scan interval for an entry.
 
@@ -52,16 +70,20 @@ def _entry_base_interval(entry: ConfigEntry) -> timedelta | None:
     """
     if CONF_APPLICATION_MANAGEMENT_TOKEN in entry.data:
         return None
-    minutes = entry.data.get(CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES)
-    return timedelta(minutes=int(minutes))
+    minutes = _coerce_minutes(
+        entry.data.get(CONF_SCAN_INTERVAL_MINUTES),
+        DEFAULT_SCAN_INTERVAL_MINUTES,
+    )
+    return timedelta(minutes=minutes)
 
 
 def _entry_fast_interval(entry: ConfigEntry) -> timedelta:
     """Resolve the configured fast (charging/active) scan interval."""
-    minutes = entry.data.get(
-        CONF_FAST_SCAN_INTERVAL_MINUTES, DEFAULT_FAST_SCAN_INTERVAL_MINUTES
+    minutes = _coerce_minutes(
+        entry.data.get(CONF_FAST_SCAN_INTERVAL_MINUTES),
+        DEFAULT_FAST_SCAN_INTERVAL_MINUTES,
     )
-    return timedelta(minutes=int(minutes))
+    return timedelta(minutes=minutes)
 
 
 @dataclass
@@ -537,6 +559,9 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self.batch_requests: set[EntityDescriptionKey] = set()
         self.data: dict[str, Any] = {}
+        # Set by `poll_now` service to force a full default-batch fetch even
+        # when `pref_disable_polling` is on. Cleared after one fetch cycle.
+        self._force_full_poll: bool = False
 
         super().__init__(
             hass,
@@ -575,6 +600,17 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
         """Mark a sensor to be included in the next update batch."""
         self._batch_add(sensor.entity_description.key)
 
+    async def async_poll_now(self) -> None:
+        """Service-driven refresh that bypasses ``pref_disable_polling``.
+
+        Sets a one-shot flag so ``_batch_add_defaults`` includes the full
+        default batch even when the user has disabled background polling.
+        The flag is consumed (cleared) by ``_batch_add_defaults`` once honored.
+        Coalesces with HA's standard ``request_refresh_debouncer`` (60s).
+        """
+        self._force_full_poll = True
+        await self.async_request_refresh()
+
     def _batch_add(self, key: EntityDescriptionKey) -> None:
         """Mark data as needing to be fetched in the next update batch."""
 
@@ -603,10 +639,16 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
         """
         if self.batch_requests:
             return
-        if (
-            self.config_entry.pref_disable_polling
-            or CONF_APPLICATION_MANAGEMENT_TOKEN in self.config_entry.data
-        ):
+        # Webhook-only mode: never auto-add default batch paths.
+        if CONF_APPLICATION_MANAGEMENT_TOKEN in self.config_entry.data:
+            return
+        # Polling disabled: skip defaults UNLESS the user explicitly invoked
+        # `smartcar.poll_now`, which is interpreted as explicit user intent
+        # that should bypass the disabled-polling preference. Consume (clear)
+        # the flag here so subsequent scheduled fetches behave normally.
+        force_full = self._force_full_poll
+        self._force_full_poll = False
+        if self.config_entry.pref_disable_polling and not force_full:
             return
 
         entities: list[er.RegistryEntry] = er.async_entries_for_config_entry(
@@ -723,10 +765,15 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
     def _apply_dynamic_interval(self, data: dict[str, Any]) -> None:
         """Adjust ``self.update_interval`` based on vehicle activity signals.
 
-        - charging OR (plugged in AND not asleep) → fast interval (catch state
-          transitions promptly)
-        - asleep AND not plugged in → 2× base interval (overnight quiet hours)
+        - charging OR plugged in → fast interval (catch state transitions promptly)
         - otherwise → base interval
+
+        Note: an "asleep AND not plugged → 2× base" branch was originally planned
+        but ``connectivitystatus-isasleep`` has no v2 batch endpoint (its
+        ``DatapointConfig.endpoint_v2`` is ``None``), so the polling path never
+        populates that key. The signal is webhook-only and webhook subscription
+        is not currently available for BMW. If/when it becomes available, the
+        quiet-hours branch can be reinstated against the webhook-populated key.
 
         No-op when in webhook-only mode (``self.update_interval`` was set to
         None at construction; honor that).
@@ -734,38 +781,27 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
         if self.update_interval is None:
             return
 
-        base = _entry_base_interval(self.entry)
+        base = _entry_base_interval(self.config_entry)
         if base is None:  # safety: webhook-only mode
             return
-        fast = _entry_fast_interval(self.entry)
+        fast = _entry_fast_interval(self.config_entry)
 
         charging = bool(key_path_get(data, "charge-ischarging.value", False))
         plugged = bool(
             key_path_get(data, "charge-ischargingcableconnected.value", False)
         )
-        asleep_raw = key_path_get(data, "connectivitystatus-isasleep")
-        if isinstance(asleep_raw, dict):
-            asleep = bool(asleep_raw.get("value"))
-        else:
-            asleep = bool(asleep_raw)
 
-        if charging or (plugged and not asleep):
-            new_interval = fast
-        elif asleep and not plugged:
-            new_interval = base * 2
-        else:
-            new_interval = base
+        new_interval = fast if (charging or plugged) else base
 
         if self.update_interval != new_interval:
             _LOGGER.debug(
                 "Coordinator %s: dynamic interval %s -> %s "
-                "(charging=%s plugged=%s asleep=%s)",
+                "(charging=%s plugged=%s)",
                 self.name,
                 self.update_interval,
                 new_interval,
                 charging,
                 plugged,
-                asleep,
             )
             self.update_interval = new_interval
 
