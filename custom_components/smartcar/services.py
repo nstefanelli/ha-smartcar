@@ -1,5 +1,6 @@
 """Support for the Smartcar services."""
 
+import asyncio
 from functools import partial
 import logging
 from typing import Final, Literal
@@ -29,6 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_NAME_LOCK_DOORS: Final = "lock_doors"
 SERVICE_NAME_UNLOCK_DOORS: Final = "unlock_doors"
+SERVICE_NAME_POLL_NOW: Final = "poll_now"
 ATTR_CONFIG_ENTRY: Final = "config_entry"
 ATTR_VIN: Final = "vin"
 
@@ -45,6 +47,7 @@ _SERVICE_SCHEMA_DOORS_SECURITY: Final = vol.Schema(
 )
 SERVICE_SCHEMA_LOCK_DOORS: Final = _SERVICE_SCHEMA_DOORS_SECURITY
 SERVICE_SCHEMA_UNLOCK_DOORS: Final = _SERVICE_SCHEMA_DOORS_SECURITY
+SERVICE_SCHEMA_POLL_NOW: Final = _SERVICE_SCHEMA_DOORS_SECURITY
 
 
 def _async_write_entity_state(hass: HomeAssistant, entity_id: str) -> None:
@@ -125,6 +128,47 @@ async def _unlock_doors(
     await _send_security_command(call, "UNLOCK", hass=hass)
 
 
+async def _poll_now(
+    call: ServiceCall,
+    *,
+    hass: HomeAssistant,
+) -> ServiceResponse:
+    """Force an immediate refresh of vehicle data, bypassing the polling interval.
+
+    Calls are debounced (60s, see POLL_NOW_DEBOUNCE_SECONDS) by the coordinator's
+    ``request_refresh_debouncer`` so a noisy automation cannot blow the API budget.
+    """
+    entry_id: str = call.data[ATTR_CONFIG_ENTRY]
+    entry: ConfigEntry | None = hass.config_entries.async_get_entry(entry_id)
+    vin: str | None = call.data.get(ATTR_VIN)
+
+    if not entry:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_config_entry",
+            translation_placeholders={"config_entry": entry_id},
+        )
+
+    coordinators = entry.runtime_data.coordinators
+    if vin:
+        if vin not in coordinators:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_vin",
+                translation_placeholders={"vin": vin},
+            )
+        targets = [coordinators[vin]]
+    else:
+        targets = list(coordinators.values())
+
+    _LOGGER.info(
+        "poll_now: requesting refresh for %d coordinator(s) on entry %s",
+        len(targets),
+        entry_id,
+    )
+    await asyncio.gather(*(c.async_request_refresh() for c in targets))
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Set up Smartcar services."""
@@ -141,5 +185,13 @@ def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_NAME_UNLOCK_DOORS,
         partial(_unlock_doors, hass=hass),
         schema=SERVICE_SCHEMA_UNLOCK_DOORS,
+        supports_response=SupportsResponse.NONE,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_NAME_POLL_NOW,
+        partial(_poll_now, hass=hass),
+        schema=SERVICE_SCHEMA_POLL_NOW,
         supports_response=SupportsResponse.NONE,
     )

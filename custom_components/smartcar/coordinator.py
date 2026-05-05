@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -23,7 +24,16 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .auth import AbstractAuth
-from .const import CONF_APPLICATION_MANAGEMENT_TOKEN, DOMAIN, EntityDescriptionKey
+from .const import (
+    CONF_APPLICATION_MANAGEMENT_TOKEN,
+    CONF_FAST_SCAN_INTERVAL_MINUTES,
+    CONF_SCAN_INTERVAL_MINUTES,
+    DEFAULT_FAST_SCAN_INTERVAL_MINUTES,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
+    DOMAIN,
+    POLL_NOW_DEBOUNCE_SECONDS,
+    EntityDescriptionKey,
+)
 from .util import async_request_with_retry, key_path_get, key_path_update
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,7 +43,25 @@ VEHICLE_BACK_ROW = 1
 VEHICLE_LEFT_COLUMN = 0
 VEHICLE_RIGHT_COLUMN = 1
 
-UPDATE_INTERVAL = timedelta(hours=6)
+
+def _entry_base_interval(entry: ConfigEntry) -> timedelta | None:
+    """Resolve the configured base scan interval for an entry.
+
+    Returns None in webhook-only mode (an application management token is
+    configured) so the coordinator does not poll on a schedule.
+    """
+    if CONF_APPLICATION_MANAGEMENT_TOKEN in entry.data:
+        return None
+    minutes = entry.data.get(CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES)
+    return timedelta(minutes=int(minutes))
+
+
+def _entry_fast_interval(entry: ConfigEntry) -> timedelta:
+    """Resolve the configured fast (charging/active) scan interval."""
+    minutes = entry.data.get(
+        CONF_FAST_SCAN_INTERVAL_MINUTES, DEFAULT_FAST_SCAN_INTERVAL_MINUTES
+    )
+    return timedelta(minutes=int(minutes))
 
 
 @dataclass
@@ -514,9 +542,13 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{vin}",
-            update_interval=UPDATE_INTERVAL
-            if CONF_APPLICATION_MANAGEMENT_TOKEN not in entry.data
-            else None,
+            update_interval=_entry_base_interval(entry),
+            request_refresh_debouncer=Debouncer(
+                hass,
+                _LOGGER,
+                cooldown=POLL_NOW_DEBOUNCE_SECONDS,
+                immediate=True,
+            ),
         )
 
     def is_scope_enabled(
@@ -684,7 +716,58 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
             msg = "Invalid batch response format"
             raise UpdateFailed(msg)
 
-        return self._merge_batch_data(response_data)
+        merged = self._merge_batch_data(response_data)
+        self._apply_dynamic_interval(merged)
+        return merged
+
+    def _apply_dynamic_interval(self, data: dict[str, Any]) -> None:
+        """Adjust ``self.update_interval`` based on vehicle activity signals.
+
+        - charging OR (plugged in AND not asleep) → fast interval (catch state
+          transitions promptly)
+        - asleep AND not plugged in → 2× base interval (overnight quiet hours)
+        - otherwise → base interval
+
+        No-op when in webhook-only mode (``self.update_interval`` was set to
+        None at construction; honor that).
+        """
+        if self.update_interval is None:
+            return
+
+        base = _entry_base_interval(self.entry)
+        if base is None:  # safety: webhook-only mode
+            return
+        fast = _entry_fast_interval(self.entry)
+
+        charging = bool(key_path_get(data, "charge-ischarging.value", False))
+        plugged = bool(
+            key_path_get(data, "charge-ischargingcableconnected.value", False)
+        )
+        asleep_raw = key_path_get(data, "connectivitystatus-isasleep")
+        if isinstance(asleep_raw, dict):
+            asleep = bool(asleep_raw.get("value"))
+        else:
+            asleep = bool(asleep_raw)
+
+        if charging or (plugged and not asleep):
+            new_interval = fast
+        elif asleep and not plugged:
+            new_interval = base * 2
+        else:
+            new_interval = base
+
+        if self.update_interval != new_interval:
+            _LOGGER.debug(
+                "Coordinator %s: dynamic interval %s -> %s "
+                "(charging=%s plugged=%s asleep=%s)",
+                self.name,
+                self.update_interval,
+                new_interval,
+                charging,
+                plugged,
+                asleep,
+            )
+            self.update_interval = new_interval
 
     def _merge_batch_data(self, batch_data: dict[str, Any]) -> dict[str, Any]:
         """Merge data from the responses from a batch request.

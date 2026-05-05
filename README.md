@@ -6,6 +6,8 @@
 >
 > **What's added vs. upstream:**
 > - **Manual auth-code entry during reauth.** When HA prompts for re-authentication, choose "Manual token entry" instead of "OAuth re-authentication" and paste in the authorization code returned by Smartcar's mobile SDK. The integration exchanges it for tokens via Smartcar's `/oauth/token` endpoint using the configured application credentials. HA's standard refresh chain takes over from there — no further mobile-SDK round-trips until the next revoke event.
+> - **Configurable polling intervals + state-aware dynamic interval (`v0.4.8-bmw.1`).** Options flow exposes `scan_interval_minutes` (base) and `fast_scan_interval_minutes` (active). Coordinator automatically uses fast interval while charging or actively-plugged-and-awake; doubles base when asleep-and-unplugged. Default 6h base / 1h fast.
+> - **`smartcar.poll_now` service (`v0.4.8-bmw.1`).** Force an immediate refresh from automations (e.g. arriving home, garage door open, route ended). Debounced 60s so noisy automations cannot drain the API budget.
 >
 > **Why this matters for BMW owners:** The standard upstream integration cannot complete a new BMW pairing in the US — the OAuth web flow returns hCaptcha "Your computer or network has sent too many requests" regardless of network or browser. Smartcar's support has confirmed: outside the EU, BMW connections require their mobile SDK. This fork lets you mint tokens via the mobile SDK out-of-band and inject them through the HA reauth flow.
 

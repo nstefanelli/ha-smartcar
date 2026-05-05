@@ -8,8 +8,13 @@
 - **Devices**: 3 BMWs (model details + IDs in private homelab `docs/bmw-smartcar.md`)
 - **Smartcar app**: BMW Mobile SDK pair. Specific client_id, app_creds id, and config_entry_id are kept out of this public repo — see private homelab notes.
 - **Auth**: OAuth2 via Smartcar's mobile SDK pairing — tokens minted out-of-band (BMW US blocks web flow with hCaptcha) and injected; HA's stock OAuth2 refresh handles rotation.
-- **IoT class**: `cloud_polling` (default 6h, 30min while charging). Webhooks supported (not yet enabled).
-- **API tier**: Free (500 calls/month/vehicle). 6h polling × 3 cars = ~360/month total.
+- **IoT class**: `cloud_polling` with state-aware dynamic interval (since `0.4.8-bmw.1`).
+  - Base default 6h (configurable 60–1440 min via options flow, key `scan_interval_minutes`).
+  - Fast default 1h (configurable 30–720 min, key `fast_scan_interval_minutes`) — used when charging OR (plugged in AND not asleep).
+  - 2× base when asleep AND not plugged in (overnight quiet hours).
+  - `smartcar.poll_now` service forces an immediate refresh; debounced 60s.
+  - Webhook scaffolding present but not viable for BMW today (Smartcar's scheduled webhooks are deprecated for new integrations; event-based webhooks have no documented BMW support).
+- **API tier**: Free (500 calls/month/vehicle). Default cadence ≈ 120/month/vehicle baseline + ~60/month/vehicle fast-while-charging-4h-day = ~180/month/vehicle (36% of budget). 3 cars × 180 = 540 total/month — comfortable.
 
 ## Fork tracking
 

@@ -20,6 +20,24 @@ SMARTCAR_MODE = "live"
 CONF_APPLICATION_MANAGEMENT_TOKEN = "application_management_token"  # noqa: S105
 CONF_CLOUDHOOK = "cloudhook"
 
+# Polling configuration (BMW-fork). Stored in entry.data alongside the existing
+# webhook config so the standard async_update_listener triggers a coordinator
+# reload when the user changes them via the options flow.
+CONF_SCAN_INTERVAL_MINUTES = "scan_interval_minutes"
+CONF_FAST_SCAN_INTERVAL_MINUTES = "fast_scan_interval_minutes"
+
+DEFAULT_SCAN_INTERVAL_MINUTES = 360  # 6 hours
+DEFAULT_FAST_SCAN_INTERVAL_MINUTES = 60  # 1 hour while charging or actively awake
+
+MIN_SCAN_INTERVAL_MINUTES = 60
+MAX_SCAN_INTERVAL_MINUTES = 1440
+MIN_FAST_SCAN_INTERVAL_MINUTES = 30
+MAX_FAST_SCAN_INTERVAL_MINUTES = 720
+
+# Cooldown for poll_now service requests + dynamic-interval evaluation. Multiple
+# rapid calls within this window coalesce to a single API fetch.
+POLL_NOW_DEBOUNCE_SECONDS = 60.0
+
 
 class Scope(StrEnum):
     """Scope enumeration class."""

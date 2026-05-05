@@ -32,10 +32,18 @@ from .const import (
     API_HOST,
     CONF_APPLICATION_MANAGEMENT_TOKEN,
     CONF_CLOUDHOOK,
+    CONF_FAST_SCAN_INTERVAL_MINUTES,
+    CONF_SCAN_INTERVAL_MINUTES,
     CONFIGURABLE_SCOPES,
+    DEFAULT_FAST_SCAN_INTERVAL_MINUTES,
     DEFAULT_NAME,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
     DEFAULT_SCOPES,
     DOMAIN,
+    MAX_FAST_SCAN_INTERVAL_MINUTES,
+    MAX_SCAN_INTERVAL_MINUTES,
+    MIN_FAST_SCAN_INTERVAL_MINUTES,
+    MIN_SCAN_INTERVAL_MINUTES,
     OAUTH2_TOKEN,
     REQUIRED_SCOPES,
     SMARTCAR_MODE,
@@ -73,6 +81,23 @@ GENERAL_CONFIGURATION_SCHEMA = {
     vol.Optional(CONF_APPLICATION_MANAGEMENT_TOKEN): TextSelector(
         config=TextSelectorConfig(type=TextSelectorType.TEXT)
     ),
+    vol.Optional(
+        CONF_SCAN_INTERVAL_MINUTES,
+        default=DEFAULT_SCAN_INTERVAL_MINUTES,
+    ): vol.All(
+        vol.Coerce(int),
+        vol.Range(min=MIN_SCAN_INTERVAL_MINUTES, max=MAX_SCAN_INTERVAL_MINUTES),
+    ),
+    vol.Optional(
+        CONF_FAST_SCAN_INTERVAL_MINUTES,
+        default=DEFAULT_FAST_SCAN_INTERVAL_MINUTES,
+    ): vol.All(
+        vol.Coerce(int),
+        vol.Range(
+            min=MIN_FAST_SCAN_INTERVAL_MINUTES,
+            max=MAX_FAST_SCAN_INTERVAL_MINUTES,
+        ),
+    ),
 }
 BASE_DESCRIPTION_PLACEHOLDERS = {
     "webhook_url": "webhooks-not-enabled",
@@ -97,6 +122,18 @@ def _validate_general_configuration_input(
     if not management_token:
         user_input.pop(CONF_APPLICATION_MANAGEMENT_TOKEN, None)
 
+    # Polling intervals — fast must be <= base.
+    base = int(
+        user_input.get(CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES)
+    )
+    fast = int(
+        user_input.get(
+            CONF_FAST_SCAN_INTERVAL_MINUTES, DEFAULT_FAST_SCAN_INTERVAL_MINUTES
+        )
+    )
+    if fast > base:
+        errors["base"] = "fast_must_be_le_base"
+
 
 def _add_dynamic_values_to_entry_data(
     data: dict[str, Any],
@@ -116,7 +153,7 @@ class SmartcarOAuth2FlowHandler(AbstractOAuth2FlowHandler, domain=DOMAIN):  # ty
 
     DOMAIN = DOMAIN
     VERSION = 2
-    MINOR_VERSION = 0
+    MINOR_VERSION = 1
     entry_data: dict[str, Any] | None = None
     scope_data: dict[str, Any] | None = None
 

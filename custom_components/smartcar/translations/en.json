@@ -32,7 +32,8 @@
             "no_management_token": "Missing application management token",
             "extraneous_management_token": "Do not provide application management token unless using webhooks",
             "invalid_auth_code": "The authorization code was rejected by Smartcar (expired, already used, or invalid). Generate a new one via the mobile SDK and paste it here.",
-            "oauth_failed": "Smartcar's token endpoint returned an unexpected error. Check Home Assistant logs for details."
+            "oauth_failed": "Smartcar's token endpoint returned an unexpected error. Check Home Assistant logs for details.",
+            "fast_must_be_le_base": "The fast polling interval must be less than or equal to the base interval."
         },
         "step": {
             "pick_implementation": {
@@ -59,9 +60,11 @@
             "webhooks": {
                 "data": {
                     "use_webhooks": "Use webhooks",
-                    "application_management_token": "Token: only provide if using webhooks"
+                    "application_management_token": "Token: only provide if using webhooks",
+                    "scan_interval_minutes": "Base polling interval (minutes, 60–1440)",
+                    "fast_scan_interval_minutes": "Fast polling while charging or active (minutes, 30–720, must be ≤ base)"
                 },
-                "description": "Provide your _Application Management Token_ from your [Smartcar account]({smartcar_url}) to use webhooks.\n\nSee [the documentation]({docs_url}) for further details.",
+                "description": "Provide your _Application Management Token_ from your [Smartcar account]({smartcar_url}) to use webhooks.\n\n**Polling:** the integration polls Smartcar at the base interval (default 6h). When a vehicle is charging or actively awake-and-plugged-in, it polls at the fast interval (default 1h). When asleep and unplugged, it slows to 2× the base interval. Free tier is 500 API calls/month/vehicle — defaults use ~120/month, leaving budget for `smartcar.poll_now` automations.\n\nSee [the documentation]({docs_url}) for further details.",
                 "title": "Smartcar configuration"
             },
             "scopes": {
@@ -135,6 +138,20 @@
                 }
             },
             "name": "Unlock doors"
+        },
+        "poll_now": {
+            "description": "Force an immediate refresh of vehicle data, bypassing the polling interval. Calls are debounced (60s) so a noisy automation cannot drain the API budget.",
+            "fields": {
+                "config_entry": {
+                    "description": "The config entry to refresh.",
+                    "name": "Config entry"
+                },
+                "vin": {
+                    "description": "Optional. Refresh only this VIN; otherwise refreshes all vehicles in the entry.",
+                    "name": "VIN"
+                }
+            },
+            "name": "Refresh vehicle data now"
         }
     }
 }

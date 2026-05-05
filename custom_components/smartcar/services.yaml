@@ -20,3 +20,14 @@ unlock_doors:
       required: false
       selector:
         text:
+poll_now:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: smartcar
+    vin:
+      required: false
+      selector:
+        text:

@@ -11,6 +11,6 @@
   "issue_tracker": "https://github.com/nstefanelli/ha-smartcar/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.4.7-bmw.2",
+  "version": "0.4.8-bmw.1",
   "zeroconf": []
 }
