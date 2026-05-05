@@ -1,11 +1,13 @@
 # Smartcar Integration for Home Assistant — BMW fork
 
-> **About this fork:** Personal fork of [`wbyoung/smartcar`](https://github.com/wbyoung/smartcar) with additional features, primarily a **manual token entry path for re-authentication** to support vehicles where Smartcar's web OAuth flow is unavailable (e.g. BMW US since 2025-09, where new pairings must use Smartcar's mobile SDK).
+> **About this fork:** Fork of [`wbyoung/smartcar`](https://github.com/wbyoung/smartcar) extended for BMW vehicles in regions where Smartcar's web OAuth flow is blocked (US since 2025-09 — BMW now requires Smartcar's mobile SDK for new pairings, and the web flow is hCaptcha-walled).
 >
 > Generally-useful changes are submitted upstream as PRs. The fork tracks `upstream/main` and is merged periodically.
 >
 > **What's added vs. upstream:**
 > - **Manual token entry during reauth.** When HA prompts for re-authentication, choose "Manual token entry" instead of "OAuth re-authentication" and paste in tokens obtained via Smartcar's mobile SDK (auth code → exchange via `auth.smartcar.com/oauth/token`). HA's standard refresh chain takes over from there — no further mobile-SDK round-trips until the next revoke event.
+>
+> **Why this matters for BMW owners:** The standard upstream integration cannot complete a new BMW pairing in the US — the OAuth web flow returns hCaptcha "Your computer or network has sent too many requests" regardless of network or browser. Smartcar's support has confirmed: outside the EU, BMW connections require their mobile SDK. This fork lets you mint tokens via the mobile SDK out-of-band and inject them through the HA reauth flow.
 
 ---
 

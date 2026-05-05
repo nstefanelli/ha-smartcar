@@ -1,6 +1,6 @@
 {
   "domain": "smartcar",
-  "name": "Smartcar (stefhome fork)",
+  "name": "Smartcar (BMW fork)",
   "after_dependencies": ["cloud"],
   "codeowners": ["@nstefanelli", "@tube0013", "@wbyoung"],
   "config_flow": true,
@@ -11,6 +11,6 @@
   "issue_tracker": "https://github.com/nstefanelli/ha-smartcar/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.4.7-stefhome.1",
+  "version": "0.4.7-bmw.1",
   "zeroconf": []
 }
