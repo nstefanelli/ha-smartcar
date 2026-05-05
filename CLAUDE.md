@@ -82,13 +82,19 @@ sudo cp -r /mnt/home-automation/homelab/ha-integrations/ha-smartcar/custom_compo
 curl -sS -X POST -H "Authorization: Bearer $HA_TOKEN" http://172.27.10.10:8123/api/services/homeassistant/restart
 ```
 
-### Add a new platform (e.g. climate)
+### Add a new platform
 
-1. Create `custom_components/smartcar/climate.py` with `async_setup_entry` + entity class.
-2. Register `"climate"` in `PLATFORMS` list in `const.py`.
+1. Create `custom_components/smartcar/<platform>.py` with `async_setup_entry` + entity class.
+2. Register the platform in `PLATFORMS` list in `const.py`.
 3. Wire scopes if a new scope is needed: add to `Scope` enum, `CONFIGURABLE_SCOPES`, optionally `DEFAULT_SCOPES`.
 4. Add translation keys in `translations/en.json` under `config.step.scopes.data` for the new scope.
 5. Test on `ha-test` (172.27.10.218) before deploying to production.
+
+### Climate platform — investigated 2026-05-05, not pursuing
+
+Empirical probe found Smartcar's climate **control** endpoints are Tesla-only (`POST /vehicles/{id}/tesla/climate/cabin` etc.). BMW only supports `GET /climate` (read state, requires `read_climate` scope). Bidirectional HA `climate.*` entity is not feasible without the control endpoints.
+
+If revisiting: confirm Smartcar has added BMW write endpoints, then re-pair to add `read_climate` + `control_climate` scopes, then build the platform. Until then, read-only climate sensors are deferred (low value vs. re-pair cost).
 
 ## Gotchas
 
