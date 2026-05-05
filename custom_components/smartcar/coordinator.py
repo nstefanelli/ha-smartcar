@@ -758,6 +758,26 @@ class SmartcarVehicleCoordinator(DataUpdateCoordinator):
             msg = "Invalid batch response format"
             raise UpdateFailed(msg)
 
+        # Smartcar wraps per-path errors inside an HTTP 200 batch response.
+        # When the connected-services grant is invalidated upstream (e.g. BMW
+        # revokes Smartcar's access), every per-path body comes back with
+        # `type=CONNECTED_SERVICES_ACCOUNT, code=AUTHENTICATION_FAILED`. The
+        # OAuth token at Smartcar is still valid, so HA's normal 401 reauth
+        # path doesn't fire — the integration would otherwise sit broken
+        # silently. Surface it as a reauth ask so the user gets the standard
+        # HA notification + manual-token reconfigure flow.
+        for item in response_data["responses"]:
+            body = item.get("body") or {}
+            if (
+                isinstance(body, dict)
+                and body.get("type") == "CONNECTED_SERVICES_ACCOUNT"
+                and body.get("code") == "AUTHENTICATION_FAILED"
+            ):
+                raise ConfigEntryAuthFailed(
+                    body.get("description")
+                    or "Smartcar requires reauthentication"
+                )
+
         merged = self._merge_batch_data(response_data)
         self._apply_dynamic_interval(merged)
         return merged
@@ -908,10 +928,19 @@ class _DataAdder:
         for datapoint in DATAPOINT_STORAGE_KEY_V2_MAP[storage_key_v2]:
             assert storage_key_v2 == datapoint.storage_key_v2
 
+            if body is None:
+                # Non-200 response (e.g. 404 from /location for BMWs that
+                # don't expose precise location). Match v1's
+                # `from_response_body` behavior: clear the storage key.
+                # Skipping the transform/merge here is required because some
+                # datapoint transforms (e.g. LOCATION's `lambda location:
+                # location`) pass values through unchanged and would return
+                # None, which then breaks the default `dict | dict` merge.
+                self.data[datapoint.storage_key] = None
+                continue
+
             value = (
-                None
-                if body is None
-                else key_path_get(body, datapoint.value_key_path_v2)
+                key_path_get(body, datapoint.value_key_path_v2)
                 if datapoint.value_key_path_v2
                 else body
             )
