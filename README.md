@@ -1,4 +1,4 @@
-# Smartcar Integration for Home Assistant — stefhome fork
+# Smartcar Integration for Home Assistant — BMW fork
 
 > **About this fork:** Personal fork of [`wbyoung/smartcar`](https://github.com/wbyoung/smartcar) with additional features, primarily a **manual token entry path for re-authentication** to support vehicles where Smartcar's web OAuth flow is unavailable (e.g. BMW US since 2025-09, where new pairings must use Smartcar's mobile SDK).
 >
