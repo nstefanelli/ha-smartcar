@@ -312,6 +312,9 @@ class SmartcarOAuth2FlowHandler(AbstractOAuth2FlowHandler, domain=DOMAIN):  # ty
             return self.async_show_menu(
                 step_id="reauth_confirm",
                 menu_options=["oauth_reauth", "manual_token"],
+                description_placeholders={
+                    "name": self._get_reauth_entry().title,
+                },
             )
         return await self.async_step_user()
 
