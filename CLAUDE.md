@@ -5,8 +5,8 @@
 - **Deployed to**: `/mnt/homeassistant/custom_components/smartcar/`
 - **GitHub fork**: https://github.com/nstefanelli/ha-smartcar (origin)
 - **Upstream**: https://github.com/wbyoung/smartcar (`upstream` remote)
-- **Devices**: 2024 BMW iX xDrive50, 2025 BMW i7 xDrive60, 2026 BMW X7 xDrive40i (3 vehicles, single config entry)
-- **Smartcar app**: client_id `00000000-0000-0000-0000-000000000000` (BMW Mobile SDK pair). app_creds id `smartcar_REDACTED_app_creds_id`. config_entry_id `REDACTED_entry_id`.
+- **Devices**: 3 BMWs (model details + IDs in private homelab `docs/bmw-smartcar.md`)
+- **Smartcar app**: BMW Mobile SDK pair. Specific client_id, app_creds id, and config_entry_id are kept out of this public repo — see private homelab notes.
 - **Auth**: OAuth2 via Smartcar's mobile SDK pairing — tokens minted out-of-band (BMW US blocks web flow with hCaptcha) and injected; HA's stock OAuth2 refresh handles rotation.
 - **IoT class**: `cloud_polling` (default 6h, 30min while charging). Webhooks supported (not yet enabled).
 - **API tier**: Free (500 calls/month/vehicle). 6h polling × 3 cars = ~360/month total.
@@ -39,23 +39,15 @@
 
 When HA shows the "Smartcar needs reauth" notification:
 
-1. **Mint new tokens via mobile SDK** on macstudio:
+1. **Capture auth code** via `BMWPair.app` on a Mac:
    ```bash
-   ssh nstefanelli@172.27.10.56
-   cd ~/sterling/tools/bmw-pair && ./.build/debug/BMWPair
+   open ~/sterling/tools/bmw-pair-v2/BMWPair.app
    ```
-   Click "Connect BMW" → sign in → authorize all 3 vehicles → auth code copied to clipboard.
+   Click "Connect a vehicle" → BMW login → authorize vehicles → success screen shows auth code (also on clipboard).
 
-2. **Exchange auth code for tokens**:
-   ```bash
-   cd ~/sterling/tools/bmw-pair
-   CLIENT_SECRET=<from 1Password> ./exchange.sh <paste_code>
-   # → tokens.json (access_token + refresh_token)
-   ```
+2. **Paste into HA UI**: click reauth notification → choose **Manual token entry** → paste auth code → submit. Integration exchanges and validates internally.
 
-3. **Paste into HA UI**: click reauth notification → choose **Manual token entry** → paste `access_token` and `refresh_token` from `tokens.json` → submit.
-
-4. Done. HA reloads the config entry. No HA restart, no `inject.py`, no SSH-to-HA.
+3. Done. ~3 min total, no HA restart, no SSH, no exchange.sh.
 
 ### Sync from upstream
 

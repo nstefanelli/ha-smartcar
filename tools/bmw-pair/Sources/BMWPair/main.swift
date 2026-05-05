@@ -189,7 +189,7 @@ struct ConfigView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Smartcar Application Credentials").font(.title2).bold()
-            Text("Enter the **Client ID** from your Smartcar developer dashboard. This is a UUID like `00000000-0000-0000-0000-000000000000`.")
+            Text("Enter the **Client ID** from your Smartcar developer dashboard. This is a UUID, e.g. `00000000-0000-0000-0000-000000000000`.")
                 .fixedSize(horizontal: false, vertical: true)
             Text("**Important:** in your Smartcar application, register `sc<your-client-id>://exchange` as a redirect URI.")
                 .font(.callout)
