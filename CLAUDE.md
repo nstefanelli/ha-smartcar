@@ -1,4 +1,4 @@
-# Smartcar Integration (stefhome fork)
+# Smartcar Integration (BMW fork)
 
 ## Quick Reference
 
@@ -63,7 +63,7 @@ When HA shows the "Smartcar needs reauth" notification:
 cd /mnt/home-automation/homelab/ha-integrations/ha-smartcar
 git fetch upstream
 git merge upstream/main           # or rebase if you prefer linear history
-# Resolve conflicts; bump manifest.json version (e.g. 0.4.8-stefhome.1)
+# Resolve conflicts; bump manifest.json version (e.g. 0.4.8-bmw.1)
 # Update CLAUDE.md "Fork tracking" with new upstream SHA/version
 git push origin main
 gh release create v<new-version> --target main --title "..." --notes "..."
