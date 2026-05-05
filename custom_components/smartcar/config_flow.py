@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 import logging
 import time
 from typing import Any, cast
 
-from aiohttp import ClientConnectorError, ClientError
+from aiohttp import BasicAuth, ClientConnectorError, ClientError
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.components import cloud, webhook
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
@@ -34,6 +36,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_SCOPES,
     DOMAIN,
+    OAUTH2_TOKEN,
     REQUIRED_SCOPES,
     SMARTCAR_MODE,
     Scope,
@@ -46,26 +49,22 @@ _LOGGER = logging.getLogger(__name__)
 
 CONF_USE_WEBHOOKS = "use_webhooks"
 
-# Manual-token reauth fields (for environments where the OAuth web flow is unavailable,
-# e.g. an OEM blocking Smartcar's web client via captcha — BMW US since 2025-09. The user
-# obtains tokens out-of-band via Smartcar's mobile SDK and pastes them here.)
-CONF_MANUAL_ACCESS_TOKEN = "access_token"  # noqa: S105
-CONF_MANUAL_REFRESH_TOKEN = "refresh_token"  # noqa: S105
-CONF_MANUAL_EXPIRES_IN = "expires_in"
+# Manual-token entry path (for environments where the OAuth web flow is unavailable,
+# e.g. an OEM blocking Smartcar's web client via captcha — BMW US since 2025-09).
+# The user pairs via Smartcar's mobile SDK on a separate device, captures the
+# auth code, and pastes it here. The integration then exchanges the code for tokens
+# via Smartcar's /oauth/token endpoint using the configured application credentials.
+CONF_MANUAL_AUTH_CODE = "auth_code"
 
-DEFAULT_TOKEN_EXPIRES_IN = 7200  # Smartcar access tokens are 2h by spec
+# The mobile-SDK redirect URI pattern Smartcar requires; the auth code is bound to this
+# URI at issuance, so the same URI must be used at exchange time.
+MOBILE_REDIRECT_URI_FORMAT = "sc{client_id}://exchange"
 
 MANUAL_TOKEN_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_MANUAL_ACCESS_TOKEN): TextSelector(
+        vol.Required(CONF_MANUAL_AUTH_CODE): TextSelector(
             config=TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
-        vol.Required(CONF_MANUAL_REFRESH_TOKEN): TextSelector(
-            config=TextSelectorConfig(type=TextSelectorType.PASSWORD)
-        ),
-        vol.Optional(
-            CONF_MANUAL_EXPIRES_IN, default=DEFAULT_TOKEN_EXPIRES_IN
-        ): vol.All(int, vol.Range(min=60, max=86400)),
     }
 )
 
@@ -287,52 +286,112 @@ class SmartcarOAuth2FlowHandler(AbstractOAuth2FlowHandler, domain=DOMAIN):  # ty
     async def async_step_manual_token(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Accept tokens minted out-of-band (Smartcar mobile SDK).
+        """Accept an auth code from Smartcar's mobile SDK and exchange it for tokens.
 
-        Reuses ``async_oauth_create_entry`` by constructing a synthetic OAuth
-        result dict matching the shape that the web flow would produce. Token
-        refresh continues to work transparently because Smartcar's
-        ``/oauth/token`` refresh endpoint does not require ``redirect_uri`` —
-        only the client_id/secret (Basic Auth) and refresh_token in the body.
+        Used when the OAuth web flow is unavailable (e.g. the OEM blocks Smartcar's
+        web client via captcha — BMW US since 2025-09 requires the mobile SDK).
+        The user pairs via the mobile SDK (custom-scheme redirect), captures the
+        auth ``code``, and pastes it here. We exchange via Smartcar's
+        ``/oauth/token`` endpoint using the configured application_credentials
+        client_id/secret with HTTP Basic Auth + the mobile redirect URI.
+
+        Token refresh continues to work transparently afterward because Smartcar's
+        refresh request does not include ``redirect_uri`` — only client_id/secret
+        and refresh_token.
 
         Returns:
             The config flow result.
         """
         errors: dict[str, str] = {}
 
+        # Resolve the OAuth implementation (provides client_id/secret).
+        # Reauth: from the existing entry's auth_implementation.
+        # Setup:  rely on AbstractOAuth2FlowHandler having set self.flow_impl
+        #         via pick_implementation; if not, kick the user back there.
+        impl: config_entry_oauth2_flow.AbstractOAuth2Implementation | None = None
+        if self.source == SOURCE_REAUTH:
+            try:
+                impl = await config_entry_oauth2_flow.async_get_config_entry_implementation(
+                    self.hass, self._get_reauth_entry()
+                )
+            except ValueError:
+                _LOGGER.exception("Reauth entry has no resolvable OAuth implementation")
+                return self.async_abort(reason="missing_credentials")
+        else:
+            impl = self.flow_impl
+            if impl is None:
+                # Force implementation selection first.
+                return await self.async_step_pick_implementation()
+
         if user_input is not None:
-            expires_in = int(user_input.get(CONF_MANUAL_EXPIRES_IN, DEFAULT_TOKEN_EXPIRES_IN))
-            synthetic_token = {
-                "access_token": user_input[CONF_MANUAL_ACCESS_TOKEN],
-                "refresh_token": user_input[CONF_MANUAL_REFRESH_TOKEN],
-                "expires_in": expires_in,
-                "expires_at": time.time() + expires_in,
-                "token_type": "Bearer",
-            }
-            synthetic_data = {CONF_TOKEN: synthetic_token}
+            client_id = impl.client_id
+            client_secret = impl.client_secret
+            redirect_uri = MOBILE_REDIRECT_URI_FORMAT.format(client_id=client_id)
+            session = async_get_clientsession(self.hass)
 
-            # Establish requested_scopes for populate_entry_data.
-            # Reauth: preserve the existing entry's scope selection.
-            # Setup:  default to REQUIRED + DEFAULT scopes.
-            existing_scopes = self._initial_data().get(CONF_TOKEN, {}).get("scopes")
-            if existing_scopes:
-                self.scope_data = {
-                    str(scope): str(scope) in existing_scopes
-                    for scope in CONFIGURABLE_SCOPES
+            try:
+                async with session.post(
+                    OAUTH2_TOKEN,
+                    auth=BasicAuth(client_id, client_secret),
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": user_input[CONF_MANUAL_AUTH_CODE].strip(),
+                        "redirect_uri": redirect_uri,
+                    },
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        _LOGGER.warning(
+                            "Smartcar token exchange failed: HTTP %s — %s",
+                            resp.status,
+                            body,
+                        )
+                        errors["base"] = (
+                            "invalid_auth_code"
+                            if resp.status in (400, 401, 403)
+                            else "oauth_failed"
+                        )
+                        token_data: dict[str, Any] = {}
+                    else:
+                        token_data = await resp.json()
+            except (ClientConnectorError, ClientError, asyncio.TimeoutError):
+                _LOGGER.exception("Smartcar token exchange connection error")
+                errors["base"] = "cannot_connect"
+                token_data = {}
+
+            if not errors and token_data:
+                expires_in = int(token_data.get("expires_in", 7200))
+                synthetic_token = {
+                    "access_token": token_data["access_token"],
+                    "refresh_token": token_data["refresh_token"],
+                    "expires_in": expires_in,
+                    "expires_at": time.time() + expires_in,
+                    "token_type": token_data.get("token_type", "Bearer"),
                 }
-            else:
-                self.scope_data = {
-                    str(scope): scope in DEFAULT_SCOPES
-                    for scope in CONFIGURABLE_SCOPES
-                }
+                synthetic_data = {CONF_TOKEN: synthetic_token}
 
-            # entry_data is required by async_oauth_create_entry. For reauth it's
-            # already set in async_step_reauth; for initial setup we initialize empty
-            # (no webhook_id — webhooks are configurable via the options flow later).
-            if self.entry_data is None:
-                self.entry_data = {}
+                # Establish requested_scopes for populate_entry_data.
+                # Reauth: preserve the existing entry's scope selection.
+                # Setup:  default to REQUIRED + DEFAULT scopes.
+                existing_scopes = self._initial_data().get(CONF_TOKEN, {}).get("scopes")
+                if existing_scopes:
+                    self.scope_data = {
+                        str(scope): str(scope) in existing_scopes
+                        for scope in CONFIGURABLE_SCOPES
+                    }
+                else:
+                    self.scope_data = {
+                        str(scope): scope in DEFAULT_SCOPES
+                        for scope in CONFIGURABLE_SCOPES
+                    }
 
-            return await self.async_oauth_create_entry(synthetic_data)
+                # entry_data is required by async_oauth_create_entry. For reauth
+                # it's already set in async_step_reauth; for initial setup we
+                # initialize empty (webhooks configurable via options flow).
+                if self.entry_data is None:
+                    self.entry_data = {}
+
+                return await self.async_oauth_create_entry(synthetic_data)
 
         return self.async_show_form(
             step_id="manual_token",

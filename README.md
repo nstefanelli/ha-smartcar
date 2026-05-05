@@ -5,7 +5,7 @@
 > Generally-useful changes are submitted upstream as PRs. The fork tracks `upstream/main` and is merged periodically.
 >
 > **What's added vs. upstream:**
-> - **Manual token entry during reauth.** When HA prompts for re-authentication, choose "Manual token entry" instead of "OAuth re-authentication" and paste in tokens obtained via Smartcar's mobile SDK (auth code → exchange via `auth.smartcar.com/oauth/token`). HA's standard refresh chain takes over from there — no further mobile-SDK round-trips until the next revoke event.
+> - **Manual auth-code entry during reauth.** When HA prompts for re-authentication, choose "Manual token entry" instead of "OAuth re-authentication" and paste in the authorization code returned by Smartcar's mobile SDK. The integration exchanges it for tokens via Smartcar's `/oauth/token` endpoint using the configured application credentials. HA's standard refresh chain takes over from there — no further mobile-SDK round-trips until the next revoke event.
 >
 > **Why this matters for BMW owners:** The standard upstream integration cannot complete a new BMW pairing in the US — the OAuth web flow returns hCaptcha "Your computer or network has sent too many requests" regardless of network or browser. Smartcar's support has confirmed: outside the EU, BMW connections require their mobile SDK. This fork lets you mint tokens via the mobile SDK out-of-band and inject them through the HA reauth flow.
 

@@ -30,7 +30,9 @@
         "error": {
             "no_scopes": "At least one scope needs to be selected",
             "no_management_token": "Missing application management token",
-            "extraneous_management_token": "Do not provide application management token unless using webhooks"
+            "extraneous_management_token": "Do not provide application management token unless using webhooks",
+            "invalid_auth_code": "The authorization code was rejected by Smartcar (expired, already used, or invalid). Generate a new one via the mobile SDK and paste it here.",
+            "oauth_failed": "Smartcar's token endpoint returned an unexpected error. Check Home Assistant logs for details."
         },
         "step": {
             "pick_implementation": {
@@ -49,11 +51,9 @@
             },
             "manual_token": {
                 "data": {
-                    "access_token": "Access token",
-                    "refresh_token": "Refresh token",
-                    "expires_in": "Access token TTL in seconds (default 7200)"
+                    "auth_code": "Authorization code"
                 },
-                "description": "Paste tokens obtained out-of-band via Smartcar's mobile SDK. The integration will validate the access token by listing your vehicles, then store both tokens. The refresh token will be used automatically as the access token expires.\n\nRefresh tokens rotate on each use and are valid for 60 days from last use; as long as Home Assistant runs and refreshes regularly, the chain stays alive indefinitely.",
+                "description": "Paste the **authorization code** from Smartcar's mobile SDK (the value returned to your `sc<client_id>://exchange` callback). The integration will exchange it for an access + refresh token using the configured application credentials, then validate by listing your vehicles.\n\nAuth codes are single-use and short-lived (~10 minutes). If exchange fails, run the mobile pairing again to get a fresh code.\n\nAfter exchange, Home Assistant takes over — the refresh token rotates automatically on each access-token expiry (~2h) and stays valid for 60 days from last use.",
                 "title": "Manual token entry"
             },
             "webhooks": {
