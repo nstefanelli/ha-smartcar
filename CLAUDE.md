@@ -41,7 +41,7 @@ When HA shows the "Smartcar needs reauth" notification:
 
 1. **Capture auth code** via `BMWPair.app` on a Mac:
    ```bash
-   open ~/sterling/tools/bmw-pair-v2/BMWPair.app
+   open ~/sterling/tools/bmw-pair/BMWPair.app
    ```
    Click "Connect a vehicle" → BMW login → authorize vehicles → success screen shows auth code (also on clipboard).
 
